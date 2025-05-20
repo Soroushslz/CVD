@@ -1,0 +1,82 @@
+import tensorflow as tf
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import accuracy_score, f1_score
+
+# Load the dataset
+data = pd.read_csv("PTB_ECG Dataset.csv")
+
+# Split the data into features and target
+X = data.drop(columns=["target"]).values
+Y = data["target"].values
+
+# Scale the data
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Reshape the data
+X_scaled = X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1], 1)
+
+# Encode the labels
+le = LabelEncoder()
+Y_encoded = le.fit_transform(Y) # type: ignore
+
+# Split the data into training and testing sets
+X_train, X_test, Y_train, Y_test = train_test_split(X_scaled, Y_encoded, test_size=0.2, random_state=1)
+
+# Define parameters
+ni = X_train.shape[1]  # number of features
+ns = 10  # number of time steps
+nf = 16  # number of filters
+nk = 5   # size of kernel
+stride = 1  # stride length
+padding = 'same'  # padding mode
+dilation = 1  # dilation factor
+no = len(np.unique(Y_encoded))  # number of output
+
+# Define the CNN model
+model_cnn = tf.keras.Sequential([
+    tf.keras.layers.Conv1D(filters=nf, kernel_size=nk, strides=stride, padding=padding, activation='relu', input_shape=(ni, 1)),
+    tf.keras.layers.MaxPooling1D(pool_size=2),
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dropout(0.5),
+    tf.keras.layers.Dense(no, activation='softmax')
+])
+
+# Calculate the number of zeros added by the padding
+if padding == 'same':
+    npad = int((nk - 1) / 2)
+elif padding == 'valid':
+    npad = 0
+else:
+    raise ValueError("Unknown padding mode")
+
+# Compile the model
+model_cnn.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(learning_rate=0.01), metrics=['accuracy'])
+
+# Train the CNN model
+model_cnn.fit(X_train, Y_train, epochs=50, batch_size=32, validation_split=0.2, verbose=1)
+
+# Evaluate the model on test data
+y_pred = model_cnn.predict(X_test)
+y_pred_classes = np.argmax(y_pred, axis=1)
+
+# Accuracy and F1-score for the test set
+test_accuracy = accuracy_score(Y_test, y_pred_classes)
+f1 = f1_score(Y_test, y_pred_classes, average='weighted')
+
+# Accuracy and F1-score for the train set
+y_train_pred = model_cnn.predict(X_train)
+y_train_pred_classes = np.argmax(y_train_pred, axis=1)
+train_accuracy = accuracy_score(Y_train, y_train_pred_classes)
+
+# Calculate the complexity of the CNN model
+CCNN = ni * nf * nk * (ns + 2 * npad - dilation * (nk - 1) - 1 / stride + 1)
+print("Complexity of the CNN model:", CCNN)
+
+# Print the Accuracy and F1-score of the model
+print("Train Accuracy: {:.2f}%".format(train_accuracy * 100))
+print("Test Accuracy: {:.2f}%".format(test_accuracy * 100))
+print("F1-score: {:.3f}".format(f1))
