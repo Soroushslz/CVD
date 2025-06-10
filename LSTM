@@ -1,0 +1,67 @@
+import tensorflow as tf
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import accuracy_score, f1_score
+
+# Load the dataset
+data = pd.read_csv("PTB_ECG Dataset.csv")
+
+# Split the data into features and target
+X = data.drop(columns=["target"]).values
+Y = data["target"].values
+
+# Scale the data
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Reshape the data
+X_scaled = X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1], 1)
+
+# Encode the labels
+le = LabelEncoder()
+Y_encoded = le.fit_transform(Y) # type: ignore
+
+# Split the data into training and testing sets
+X_train, X_test, Y_train, Y_test = train_test_split(X_scaled, Y_encoded, test_size=0.2, random_state=1)
+
+ns = 10 # number of time steps
+ni = 8 # number of input features
+nh = 226 # number of hidden units
+no = len(np.unique(Y_encoded)) # number of output units
+
+# Define the LSTM model
+model_lstm = tf.keras.Sequential([
+    tf.keras.layers.LSTM(nh, input_shape=(ni, 1)),
+    tf.keras.layers.Dropout(0.05),
+    tf.keras.layers.Dense(no, activation='softmax')
+])
+
+# Compile the model
+model_lstm.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(learning_rate=0.01), metrics=['accuracy'])
+
+# Train the CNN model
+model_lstm.fit(X_train, Y_train, epochs=50, batch_size=32, validation_split=0.2, verbose=1)
+
+# Evaluate the model on test data
+y_pred = model_lstm.predict(X_test)
+y_pred_classes = np.argmax(y_pred, axis=1)
+
+# Accuracy and F1-score for the test set
+test_accuracy = accuracy_score(Y_test, y_pred_classes)
+f1 = f1_score(Y_test, y_pred_classes, average='weighted')
+
+# Accuracy and F1-score for the train set
+y_train_pred = model_lstm.predict(X_train)
+y_train_pred_classes = np.argmax(y_train_pred, axis=1)
+train_accuracy = accuracy_score(Y_train, y_train_pred_classes)
+
+# Calculate the complexity of LSTM model
+CLSTM = ns * nh * (4 * ni + 4 * nh + 3 + no)
+print('Complexity of the LSTM:', CLSTM)
+
+# Print the Accuracy and F1-score of the model
+print("Train Accuracy: {:.2f}%".format(train_accuracy * 100))
+print("Test Accuracy: {:.2f}%".format(test_accuracy * 100))
+print("F1-score: {:.3f}".format(f1))
